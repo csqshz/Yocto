@@ -1,0 +1,265 @@
+20171115
+
+scp 命令：scp 本地文件路径 远程路径（远程路径不能以/结尾）
+
+runqemu qemuppc ext4 slirp nographic qemuparams="-m 2048"
+runqemu qemux86-64 nographic slirp bootparams="selinux=0 enforcing=0"
+
+1) Steps
+ssh hsong@pek-hostel-deb01
+ssh hsong@pek-lpggp1.wrs.com
+cd /buildarea1/
+mkdir hsong && cd hsong
+	1、clone wrlinux tool , Check Out Your Branch
+		cd /PATH/TO/PERSONAL_DIR
+		git clone git://pek-git.wrs.com/wrlinux-x
+		cd wrlinux-x
+		git checkout -b master-wr origin/master-wr
+		(自己的layer：git clone git://git.wrs.com/git/projects/wassp-repos/testcases/wrlinux)
+
+	2、get project source code
+		cd /PATH/TO/PERSONAL_DIR/Source Directory
+		wrlinux-x/setup.sh --distro=wrlinux --machine=qemux86-64 --dl-layers   			//get source 
+
+	3、Initialize the Build Environment
+		cd /PATH/TO/PERSONAL_DIR/Buidl Directory
+		. /PATH/TO/PERSONAL_DIR/PROJECT/environment-setup-x86_64-wrlinuxsdk-linux .
+		. /PATH/TO/PERSONAL_DIR/PROJECT/oe-init-build-env .                                    //creat Build Directory ,creat bitbake
+	(4、Examine Your Local Configuration File
+		poky/build/conf/local.conf：
+			1、INHERIT += "rm_work"： Adding this statement deletes the work directory used for building a recipe once the recipe is built
+			2、MACHINE variable
+			3、selects the RPM package manager by setting  PACKAGE_CLASSES variable in local.conf located at poky/build/conf/		
+
+	)
+	4、build image    
+		bitbake wrlinux-image-glibc-std
+	5、runqemu qemux86-64 nographic slirp	//nographic: Disables the video console, which sets the console to "ttys0"
+						//slirp: Enables "slirp" networking, which is a different way of networking that does not need root access but also is not as 							  easy to use or comprehensive as the default.
+		   （intel-x86-64）
+	bitbake wrlinux-image-glibc-std -g 	//列出所需要的包，以及包之间的依赖关系
+2) Reference Links
+https://knowledge.windriver.com/en-us/000_Products/000/010/060/000/000/000_Wind_River_Linux_Platform_Development_Quick_Start%2C_LTS/010
+https://knowledge.windriver.com/en-us/000_Products/000/010/060/000/000/000_Wind_River_Linux_Platform_Development_Quick_Start%2C_LTS/020
+https://knowledge.windriver.com/en-us/000_Products/000/010/060/000/000/000_Wind_River_Linux_Getting_Started%2C_LTS
+
+3) Instructions
+	git pull 			// update current branch
+	提交补丁
+	git send-email --to=openembedded-core@lists.openembedded.org --confirm=always -M -n  //从git中直接将最近n次的commit以补丁形式发送到邮件中 （oe-core）
+	1、do patch
+		git format-patch CommitID -1  	// 1 commit from newest
+		( git format-patch HEAD^)       // 最近1次的commit patch
+		( git format-patch HEAD^^)      // 最近2此的commit patch
+		git am xx.patch 		// push the patch to current branch, Corresponding updating the commit status
+			git am --abort		// false if 'git am xx.pathc',then do this, also we can do this before 'git am xx.patch' to discarded old-status
+			git am --continue    	// continue if you think OK after do patch ,although you do 'git am xx.patch' false.
+			只是忽略这一个patch，可以运行git am –skip来跳过这个patch
+		( git am --reject xx.patch)	//列出patch失败的具体位置，并生成相应的.rej文件，通过查看rej文件，可查看具体失败位置
+		( git blame [某patch中修改的文件])  //列出哪些commit修改了[]中的文件
+		
+	2、git commit -s 			//
+	  	git reset HEAD^ --hard 		// del the lastest commit, and come back to old status
+		git reflog 			// look up historic CommitID and regarding information
+		git reset --hard CommitID	// return to specific ID
+		
+	3、bitbake
+		bitbake wrlinux-image-std -e > e.py	// 将编译wrlinux package的过程重定向记录下来
+		bitbake linux-yocto -c compile -f	// equal to do_compile, can use "virtual kernel" place linux-yocto(package name)
+		
+		clean:
+			($ bitbake -c clean recipe)		// Removes all output files for a target from the do_unpack task forward (i.e. do_unpack, do_configure, do_compile, do_install, and do_package).
+			($ bitbake -c cleansstate recipe)	// Removes all output files and shared state (sstate) cache for a target.
+			($ bitbake -c cleanall recipe)		// Removes all output files, shared state (sstate) cache, and downloaded source files for a target (i.e. the contents of DL_DIR). 
+ 			($ bitbake -c clean virtual/kernel	) 	// rebuild and re-create the kernel files
+ 			($ bitbake virtual/kernel		)
+	
+	4、Using  menuconfig （enter interact of menuconfig）
+		$ source oe-init-build-env
+     		$ bitbake linux-yocto -c kernel_configme -f
+     		$ bitbake linux-yocto -c menuconfig
+	5、Creating Configuration Fragments¶
+		one means：$ echo "CONFIG_SMP=y" >> my_smp.cfg
+		two meads：
+			$ bitbake linux-yocto -c kernel_configme -f   (This step ensures that you create a .config file from a known state）
+			$ bitbake linux-yocto -c menuconfig
+			$ bitbake linux-yocto -c diffconfig
+			$ bitbake linux-yocto -c kernel_configcheck -f  （validate configuration）				
+	6、
+4）append file
+	FILESEXTRAPATHS_prepend := "${THISDIR}/${PN}:"
+	SRC_URI += "file://myconfig.cfg \
+            file://eth.cfg \
+            file://gfx.cfg"
+	（
+		SRC_URI_append += " file://i2c.cfg"
+		SRC_URI_append += " file://xilinx.cfg"
+	）
+	
+	wrlinux(patch)
+	git clone git://git.wrs.com/git/projects/wassp-repos/testcases/wrlinux
+
+5）tool（kgit、scc、spp。。。）
+	/buildarea1/hsong/tproj/source/build/tmp-glibc/work/x86_64-linux/kern-tools-native/0.2+gitAUTOINC+b46b1c4f09-r12/git/tools
+
+6) 将新包编进文件系统
+	bitbake package-name								//编译新包
+	echo "IMAGE_INSTALL_append = \"package-name\"" >> conf/local.conf		//在do_rootfs时将新包打进文件系统
+	bitbake wrlinux-image-glibc-std							//编译总包
+
+7）review
+	1、recipe目录下
+		git commit -s添加如下信息 （每行长度一般不超过80）
+			 libc-headers: add new recipe for linux-libc-headers-windriver
+    
+   			 Issue: LIN10-2300						//发到yocto不需要添加此句
+
+			 commit 8535f2ba0a9b971df62a5890699b9dfe2e0d5580 upstream 	//upstream commit id
+    
+   			 This recipe is based on linux-libc-headers and for users to include kernel headers from Wind River kernel.
+			
+			 (LOCAL REV: NOT UPSTREAM) Sent to layer-name 15 Dec 2017   //要提交到yocto社区不需要添加此句。但如果已经提交到yocto再提交到wr需要添加此句
+			(LOCAL REV: NOT UPSTREAM) -- not suitable for upstream: These patches are just
+    for generating WRLinux container for consumer.    		//注明不适合原因
+    
+			 Signed-off-by: Hongzhi Song <hongzhi.song@windriver.com>   //如果patch取自upstream，在后面加上Signed-off-by
+			 //如果patch取自upstream后，自己又修改了部分patch内容，导致新patch和upstream不是完全一样，需要添加如下两行：
+			 [HS: update patch context to apply to 4.12]		
+			 Signed-off-by: Hongzhi Song <hongzhi.song@windriver.com>
+	（2、如果patch要提交到yocto，则不需要使用wrh工具，直接git format-制作好补丁后，直接修改补丁的subject添加[layer-name或其他内容]，通过邮件发送到yocto各个模块的子社区
+
+		注意补丁的Subject格式，有个空格，Subject: [meta-virtualization][PATCH] enab。。。
+					        Subject: [linux-yocto] [yocto-4.12][PATCH] enab。。
+				
+		 git send-email --to meta-virtualization@yoctoproject.org 0001-enable-kernel-CONFIG_NET_ACT_POLICE-for-openvswit.patch
+		git send-email --to linux-yocto@yoctoproject.org 0001-enable-kernel-CONFIG_NET_ACT_POLICE-for-openvswit.patch
+		git send-email -to linux-yocto@yoctoproject.org --cc bruce.ashfield@windriver.com 0000-cover-letter.patch 0001-kernel-features-about-debug-gather-debug-features.patch
+
+	，）
+
+	2、在recipe目录下（即conf所在目录,或者分支目录），执行/buildarea1/hsong/wr-repo-tools/wrh -r 此命令会将最新的commit制作成patch并将patch放到/tmp/rr.song/rr-latest/。。。下，同时会生成rr文件在rr-latest目录下
+	3、修改rr文件：
+		(Cc: lpd-eng-rr@windriver.com)
+		Subject改成defect的标题“Subject: Review request V1 0/1: LIN10-2300 README update: No linux-libc-headers-windriver defined on wrlinux-kernel-dev”
+		Summary也改成defect标题“Summary: LIN10-2300 README update: No linux-libc-headers-windriver defined on wrlinux-kernel-dev”
+		Tech Review: Zhe
+ 		Gatekeeper: MarkA Bruce
+
+		Branch Tag: master 或者 WRLINUX_10_17_LTS   //根据情况修改 ，s/master/WRLINUX_10_17_LTS 表示把LTS 的内容替换到master
+
+		PULLs改成Comments
+		Comments：可以直接使用patch中的log
+	4、cd rr-latest
+		git send-email --to zhe.he@windriver.com --to mark.asselstine@windriver.com --cc lpd-eng-rr@windriver.com rr xxx/0001-libc-headers-add-new-recipe-for-linux-libc-headers-w.patch
+		
+wrlinux的layer发给liezhi.yang@windriver.com
+meta-virtualization liezhi marka
+
+	Gatekeeper : kernel 和 kernel-cache相关的给PaulG
+				 其他的是MarkA
+
+	5、在执行wrh -r 的同级目录下执行 /buildarea1/hsong/wr-repo-tools/wrh -p
+	6、cd /tmp/pull.hsong/pull-latest
+	7、可以适当的编辑vi 0001-wrh-pull-wrlinux-WRLINUX_10_17_LTS-20171208131019，在subject下注明要对方怎么做 Please merge it into WRLINUX_10_17_LTS wrlinux10-lts的给陶越，master给Jackie
+	8、git send-email --to mark.asselstine@windriver.com --cc lpd-eng-pull@windriver.com 0001-wrh-pull-wrlinux-WRLINUX_10_17_LTS-20171208131019
+	    git send-email --to yue.tao@windriver.com --cc lpd-eng-pull@windriver.com 0001-wrh-pull-wrlinux-WRLINUX_10_17_LTS-20180210002632
+	    git send-email --to hongxu.jia@windriver.com --cc lpd-eng-pull@windriver.com
+8）python UTF-8
+	export LC_ALL=en_US.UTF-8
+	export LANG=en_US.UTF-8
+	export LANGUAGE=en_US.UTF-8
+
+9）内核退回到某版本后，执行 bitbake virtual/kernel -c compile -f 出现.config 的配置信息和当前版本的内核不匹配，应该将.config 到和内核版本匹配的状态
+	执行完bitbake virtual/kernel -c compile -f后
+		bitbake virtual/kernel -c devshell
+		make oldconfig (以默认形式选择新出现的.config配置)
+	再执行 bitbake virtual/kernel -c compile -f即可
+
+
+10)交叉编译工具所在目录
+	work/qemux86_64-wrs-linux/linux-yocto/4.12.16+gitAUTOINC+e44ac20f65_4226b065fc-r0/recipe-sysroot-native/usr/bin/x86_64-wrs-linux/x86_64-wrs-linux-
+11)工程外编译内核
+	make -j 40 ARCH=x86_64 CROSS_COMPILE=/buildarea/raid0/hsong/proj/src_wrl10_17_lts_x86_64/build/tmp-glibc/work/qemux86_64-wrs-linux/linux-yocto/4.12.16+gitAUTOINC+e44ac20f65_4226b065fc-r0/recipe-sysroot-native/usr/bin/x86_64-wrs-linux/x86_64-wrs-linux-
+
+	make -j 40 ARCH=x86 CROSS_COMPILE=/buildarea/raid0/hsong/proj/wr10/intel/x8664_ov_l10_2823/build/tmp-glibc/work/intel_x86_64-wrs-linux/linux-yocto-rt/4.12.18+gitAUTOINC+690ab72640_8f6a2f9375-r0/recipe-sysroot-native/usr/bin/x86_64-wrs-linux/x86_64-wrs-linux-
+
+	make -j 40 ARCH=powerpc HOSTCC=gcc CROSS_COMPILE=/buildarea/raid0/hsong/proj/build-ppc/tmp-glibc/work/qemuppc-wrs-linux/linux-yocto-rt/5.0.3+gitAUTOINC+172634f02e_06e1ff79ea-r0/recipe-sysroot-native/usr/bin/powerpc-wrs-linux/powerpc-wrs-linux-
+
+	runqemu 
+
+12)将其他人的补丁提交到yocto
+	修改他人补丁：
+		Subject字段，添加[linux-yocto] [yocto-4.12]：
+			Subject: [linux-yocto] [yocto-4.12] [PATCH] x86/debug: Handle warnings before the notifier chain, to fix KGDB crash
+		在Subject之下，Commit之前，添加通用upstream commit
+			commit 原作者的commitID upstream
+	发邮件到yocto
+		git send-email --to linux-yocto@yoctoproject.org xx.patch
+13)登陆板卡服务器
+	ssh -X hsong@pek-lpggp1.wrs.com
+	/folk/vlm/bin/vlmstart&
+	/folk/vlm/commandline/vlmTool getAttr -s amazon -t 20993 all  	//20043是板卡的ID
+	IP Address	: 128.224.178.83
+	通过串口服务器登陆：
+		telnet 128.224.164.68 2007  //Terminal Server: 128.224.164.68  Terminal Server Port: 7
+	通过网络登陆
+		telnet 128.224.178.83
+	把tmp/deploy/image/bzImage...bin 和 .tar.bz2拷贝到/fork/hsong/tmp/image/下，将文件路径送给VLM
+	启动host ， zcat /proc/config.gz |grep -i [配置名称] 一次查看CONFIG_xxx是否正确开关
+	
+	修改VLM启动方式：
+		//挂在到本地任意目录
+		sudo mount pek-tuxlab.wrs.com:/export/pxeboot/vlm-boards /mnt 
+		cd /mnt/board_nr
+		修改 gpxe.cfg
+			kernel tftp://128.224.165.20/vlm-boards/20369/kernel console=ttyS0,115200 root=/dev/nfs nfsroot=128.224.165.20:/export/pxeboot/vlm-boards/20369/rootfs rw ip=dhcp //nfs启动
+			#kernel tftp://128.224.165.20/vlm-boards/20369/kernel console=ttyS0,115200 root=/dev/sda1 rw ip=dhcp mem=16G crashkernel=1024M@256M intel_iommu=off selinux=0 enforcing=0 eth_no_rmrr iommu=pt //	sda硬盘启动
+
+14）
+	将recipe添加到rootfs：
+tmp-glibc/deploy/images/intel-x86-64/
+	echo "IMAGE_INSTALL_append = \" linux-libc-headers-windriver-dev\"" >> conf/local.conf
+	echo "PREFERRED_PROVIDER_linux-libc-headers = \"linux-libc-headers-windriver\"" >> conf/local.conf
+	echo "PREFERRED_PROVIDER_nativesdk-linux-libc-headers = \"nativesdk-linux-libc-headers-windriver\"" >> conf/local.conf
+	
+	
+	echo "/source/layers/wrlinux/wrlinux-kernel-dev \" >> conf/bblayers.conf
+
+	bitbake linux-libc-headers
+	bitbake wrlinux-image-glibc-std
+	
+	添加新的feature
+	echo "KERNEL_FEATURES_append=\" features/ovp/rt-tune-host.scc\
+
+
+15) qemu-ifup
+
+16) poky 
+	MACHINE="genericx86-64" //相当于intelx86-64
+	
+17）runqemu
+	runqemu脚本 ：/buildarea/raid0/hsong/proj/wr10/intel/x8664-cgl-kgdb-2714/scripts/runqemu
+	真实qemu	   ：tmp-glibc/work/x86_64-linux/qemu-helper-native/1.0-r1/recipe-sysroot-native/usr/bin//qemu-system-x86_64
+	qemu的参数  ：tmp-glibc/deploy/images/qemux86-64/wrlinux-image-glibc-cgl-qemux86-64.qemuboot.conf  此文件自动生成
+
+18) 软件使用
+	rpm -qf /bin/ls
+	
+/etc/dnf/dnf.conf
+[main]
+installonly_limit=3
+clean_requirements_on_remove=True
+[repository]
+name=rest-repo
+baseurl=http://128.224.153.74/LIN10-3043/build/tmp-glibc/deploy/rpm/
+
+19）dnf使用
+dnf clean all
+dnf install package
+dnf remove package
+dnf info package
+dnf search package*
+dnf repoquery -L file
+
+20) next dev
+http://lxgit.wrs.com/cgit/layers/wrlinux/tree/templates/feature/userspace-next/ltp_%25.bbappend?h=master-wr
