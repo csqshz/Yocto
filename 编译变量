@@ -1,0 +1,372 @@
+1、std
+
+	setup.sh --machines intel-x86-64 --distro wrlinux --kernel standard  --all-layers --dl-layers --accept-eula=yes
+			 --machines=intel-x86-64 --distro wrlinux --dl-layers
+			 
+	LIN9		 ./wrlinux-9/setup.sh --accept-eula yes --machine intel-x86-64 --distro wrlinux --kernel preempt-rt --recipes wrlinux-image-glibc-std --all-layers --dl-layers
+
+	PREFERRED_PROVIDER_virtual/kernel = "linux-yocto" 
+
+	bitbake wrlinux-image-glibc-std 
+2、ovp
+	Host：
+		setup.sh --machines intel-x86-64 --distro wrlinux-ovp --templates feature/kexec,feature/kdump,feature/dpdk  --layer meta-dpdk --all-layers  --dl-layers --accept-eula=yes
+		
+		setup.sh --machines intel-x86-64 --distro wrlinux-ovp --dl-layers --accept-eula=yes
+
+		PREFERRED_PROVIDER_virtual/kernel = "linux-yocto-rt" in local.conf 
+
+		bitbake wrlinux-image-ovp-kvm 
+		
+		. ./environment-setup-x86_64-wrlinuxsdk-linux 
+		. ./oe-init-build-env build_test 
+		PREFERRED_PROVIDER_virtual/kernel = "linux-yocto-rt" //	wrl10的ov默认使用linux-yocto-rt，wrl9不需要此句，使用默认kernel
+		BB_NUMBER_THREADS = "25"
+		bitbake wrlinux-image-ovp-kvm 
+
+	Guest：
+		setup.sh --machines qemux86-64 --distro wrlinux-ovp --templates feature/kernel-ovp-guest --dl-layers --accept-eula=yes
+		bitbake wrlinux-image-ovp-guest
+
+LIN8 ovp
+
+wrlinux-x/wrlinux/configure --enable-board=qemuarm64 \
+           --enable-kernel=standard \
+           --enable-rootfs=glibc-small \
+           --enable-build=debug
+
+3、poky
+
+PREMIRRORS =+ "\
+bzr://.*/.* http://128.224.158.52/downloads/ \n \
+cvs://.*/.* http://128.224.158.52/downloads/ \n \
+git://.*/.* http://128.224.158.52/downloads/ \n \
+hg://.*/.* http://128.224.158.52/downloads/ \n \
+osc://.*/.* http://128.224.158.52/downloads/ \n \
+p4://.*/.* http://128.224.158.52/downloads/ \n \
+svn://.*/.* http://128.224.158.52/downloads/ \n \
+ftp://.*/.* http://128.224.158.52/downloads/ \n \
+http://.*/.* http://128.224.158.52/downloads/ \n \
+https://.*/.* http://128.224.158.52/downloads/ \n \  
+"
+
+
+yocto 相关变量
+
+1）、BB_NO_NETWORK_pn-<PN> = '0'   //specifial package accessed from network
+2）、PREFERRED_PROVIDER_virtual/kernel = linux-yocto /  linux-yocto-rt / linux-yocto-dev
+3）、KERNEL_EXTRA_FEATURES ?= "features/netfilter/netfilter.scc features/taskstats/taskstats.scc"
+4）、
+KERNEL_FEATURES_append = " ${KERNEL_EXTRA_FEATURES}"
+	KERNEL_FEATURES_append_qemuall=" cfg/virtio.scc"
+	KERNEL_FEATURES_append_qemux86=" cfg/sound.scc cfg/paravirt_kvm.scc"
+	KERNEL_FEATURES_append_qemux86-64=" cfg/sound.scc"
+	KERNEL_FEATURES_append = " ${@bb.utils.contains("TUNE_FEATURES", "mx32", " cfg/x32.scc", "" ,d)}" 
+
+5）、KBRANCH = ""  //git库里的某个分支
+6）、SRCREV_machine_genericx86-64 = ""  //当前分支的哪个commit
+
+7）、PREMIRRORS //Specifies additional paths from which the OpenEmbedded build system gets source code
+8）、
+PREMIRRORS_prepend = "\
+     ftp://.*/.* http://www.yoctoproject.org/sources/ \n \
+     http://.*/.* http://www.yoctoproject.org/sources/ \n \
+     https://.*/.* http://www.yoctoproject.org/sources/ \n"
+     BB_FETCH_PREMIRRORONLY = "1"	//only download from PREMIRRORS
+     
+PREMIRRORS =+ "\
+bzr://.*/.* http://128.224.153.41/downloads/ \n \
+cvs://.*/.* http://128.224.153.41/downloads/ \n \
+git://.*/.* http://128.224.153.41/downloads/ \n \
+hg://.*/.* http://128.224.153.41/downloads/ \n \
+osc://.*/.* http://128.224.153.41/downloads/ \n \
+p4://.*/.* http://128.224.153.41/downloads/ \n \
+svn://.*/.* http://128.224.153.41/downloads/ \n \
+ftp://.*/.* http://128.224.153.41/downloads/ \n \
+http://.*/.* http://128.224.153.41/downloads/ \n \
+https://.*/.* http://128.224.153.41/downloads/ \n" 
+     
+9）、IMAGE_NAME ： rootfs的名字，比如wrlinux-image-glibc-cgl
+
+10）、BBFILES：位于/layers/local/conf/layer.conf中，要包含当前layer下recipe-中所有的.bb和.bbappend文件
+
+11）、PNWHITELIST_networking-layer += 'nbd'  //添加meta-openembed/meta-networking/下的recipe 这样可以编译此包，bitbake nbd
+12）、IMAGE_INSTALL_append += " BPN-xxx"  		//将编译完的包install 到rootfs中，注意BPN-xx可能和BPN一样也可能不一样，比如 bitbake nbd 最终在packages-split/中编出的包是nbd-client/ nbd-server/ ，所以IMAGE_INSTALL_append += "nbd-client nbd-server"
+
+	IMAGE_INSTALL_append_pn-wrlinux-image-initramfs = " packageName2"
+	
+	IMAGE_INSTALL_INITRAMFS_append = "kernel-module-moduleName1"
+
+13）、DL_DIR="/buildarea/raid0/hsong/proj/wr10/intel/downloads-ovp
+14）、IMAGE_INSTALL_remove += "BPN"  //将某包从rootfs中移除
+15）、
+	//在packages-split/下发现最终包都编译到**-dev目录下，而**-dev并没有被打进rootfs，所以还要把这个包打进rootfs中，因为wrlinux-image-glibc-std默认是不依赖此包的
+	echo "IMAGE_INSTALL_append = \" linux-libc-headers-windriver-dev\"" >> conf/local.conf	
+	echo "PREFERRED_PROVIDER_linux-libc-headers = \"linux-libc-headers-windriver\"" >> conf/local.conf	//重写linux-libc-headers变量，因为linux-libc-headers默认不是此包
+	echo "PREFERRED_PROVIDER_nativesdk-linux-libc-headers = \"nativesdk-linux-libc-headers-windriver\"" >> conf/local.conf
+16）、
+	PACKAGES=""				//此变量的是内容是 recipe(.bb文件)在packages-spilt/下生成的各个子包名
+	IMAGE_INSTALL += ""     //表示要把哪些包打进rootfs，打进的包必须是PACKAGES所包含的，也即必须是package-spilt/下存在的包
+17）、
+	BB_NUMBER_PARSE_THREADS ?= "48" 
+	BB_NUMBER_THREADS = "25" 
+	PARALLEL_MAKE ?= "-j 48" 
+	BB_STRICT_CHECKSUM = "0" 
+18）、
+	LICENSE_FLAGS_WHITELIST +="non-commercial"
+19）、
+	//解决 WARNING: busybox-1.24.1-r0 do_package: QA Issue: busybox: Files/directories were installed but not shipped in any package:
+		  /sbin
+	  这一类问题
+	FILES_${PN} += "/lib/apparmor/ ${sysconfdir}/apparmor ${PYTHON_SITEPACKAGES_DIR} /usr/lib/python3.5/site-packages/*"   //可在bb文件或者local.conf中添加次句
+20）、
+	//SYSTEMD_SERVICE_pn don't exit
+	//在bb文件的 do_install函数中添加
+	install -d ${D}${systemd_system_unitdir}
+	install -m 0644 ${WORKDIR}/apparmor.service ${D}${systemd_system_unitdir}
+21）、
+	DISTRO_FEATURES
+22）、
+	DEPENDS_pn-xxx = 'xxx' // 添加依赖的bb包
+23）、
+	加入gdb调试
+	IMAGE_INSTALL_append += "gdb"
+	IMAGE_INSTALL_append += "lxc-dbg"
+	IMAGE_INSTALL_remove += "lxc"
+24）、
+	do_install 生成D（image）目录，在每个包的WORKDIR目录下
+	do_package 将image目录按照PACKAGES变量的内容，在在packages-spilt下生成各个包
+25）、
+	export templates_SCRIPTS = "lxc-ubuntu lxc-sshd lxc-busybox lxc-wrlinux"  // 重新定义Makefile中的变量templates_SCRIPTS，并不修改Makefile本身，而是在make的时候此变量使用新值
+	EXTRA_OEMAKE += "-e"   //将-e参数附加给make命令，全过程附加
+26）、
+	D // 包的image目录 do_install 生成的目录
+	B // 包的build目录
+	
+27）、
+	DEPENDS_pn-lxc += 'debootstrap'
+    IMAGE_INSTALL_append += 'debootstrap'
+28）、
+	RDEPENDS //运行时依赖
+	DEPENDS  //编译时依赖
+	RDEPENDS_${PN} = "somepackage"
+29）、
+	KERNEL_FEATURES += "features/kvm"
+	KBRANCH = "standard/preempt-rt/intel"
+	PREFERRED_PROVIDER_virtual/kernel = ""
+30)、
+    IMAGE_FSTYPES += "tar.bz2"   //rootfs生成镜像格式
+
+31) STAGING_KERNEL_DIR   //kernel-source 
+32）加入out of kernel tree 的驱动
+33）
+    bitbake -DDD PN > 1.log
+    
+34) CORE_IMAGE_EXTRA_INSTALL = "cryptodev-module"
+35) PACKAGE_EXCLUDE += "" // 不编译某些包
+
+36) testimage    oe-selftest
+
+#KERNEL_FEATURES_append += " features/kernel-sample/kernel-sample.scc"
+
+#TEST_SUITES_forcevariable = "auto"
+IMAGE_CLASSES += "testimage"
+TEST_SUITES_forcevariable = "ping ssh ksample"   和runtime/cases/下的py名字对应
+    
+bitbake core-image-minimal && bitbake core-image-minimal -c testimage
+
+#INHERIT += "testimage"
+251 #TEST_IMAGE = "1"
+252 #DEFAULT_TEST_SUITES_pn-core-image-minimal_append = " ssh ksample_trace ksample_kprobe ksample_kfifo ksample_kobject ksample_hw_breakpoint ksample_connector ksampl
+    e_configfs"
+253 #DEFAULT_TEST_SUITES_pn-core-image-minimal_append = " ssh ksample_abs"
+
+
+38）
+255 IMAGE_INSTALL_append += "openssh openssh-sshd kernel-modules"
+256 DISTRO_FEATURES_append = " pam"
+257 POKY_DEFAULT_DISTRO_FEATURES_append += "pam"
+
+39） do_compile_kernelmodules 编译内核模块
+
+40） do_kernel_metadata    
+	do_
+
+41) PACKAGECONFIG ??= "croco"				// 某包在编译时可能依赖croco, 下面一行将对是否依赖croco做配置
+    PACKAGECONFIG[croco] = "--with-croco,--without-croco,libcroco"   //分成4列，每列代表不通的含义
+							第一列：如果启用croco，则将参数--with-croco加到do_configure
+							第二列：加到不启用croco，则将参数加到--without-croco加到do_configure
+							第三列：将libcroco加到DEPENDS
+							第四列：将xxx加到RDEPENDS
+	PACKAGECONFIG_append = " f4"	//可以在.bbapend中添加此句
+	PACKAGECONFIG_pn-recipename="f4 f5"		//可以在local.conf中添加此句
+	PACKAGECONFIG_append_pn-recipename = " f4"
+
+42）PACKAGE_ARCH = "${MACHINE_ARCH}"   // recipe的build目录在tmp/work/的哪个目录下
+	
+43) 
+# use systemd
+DISTRO_FEATURES_append = " systemd"
+DISTRO_FEATURES_BACKFILL_CONSIDERED = "sysvinit"
+VIRTUAL-RUNTIME_init_manager = "systemd"
+VIRTUAL-RUNTIME_initscripts = ""
+	
+44) 
+SRC_URI_append_libc-musl
+
+45) bitbake gdb-cross-powerpc
+	
+IMAGE_INSTALL_append = " linux-libc-headers-windriver-dev"
+PREFERRED_PROVIDER_linux-libc-headers = "linux-libc-headers-windriver"
+PREFERRED_PROVIDER_nativesdk-linux-libc-headers = "nativesdk-linux-libc-headers-windriver"
+ENABLE_KERNEL_DEV = '1' 
+WRTEMPLATE += "feature/kernel-dev"
+IMAGE_INSTALL_append += "kernel-devsrc"
+
+46)-serial tcp::3333,server
+
+47) runqemu qemuppc nographic qemuparams="-m 2048 -serial tcp::3333,server" bootparams="kgdboc=ttyS0,115200"  kgdb 启动，这样外部gdb可以通过target remote localhost:1234连接到kernel
+    runqemu qemuppc nographic qemuparams="-m 2048 -gdb tcp::1234 -S" bootparams="kgdboc=ttyS0,115200" 启动qemu的gdb，这样外部gdb可以通过target remote localhost:1234调试qemu
+    
+48) gdb包
+    gdb-cross-x86_64
+	gdb-cross-mips
+ 
+49) 指定rootfs 大小 IMAGE_ROOTFS_EXTRA_SPACE = "409600"
+50) IMAGE_FSTYPES="tar.bz2 tar.bz2 ext4"
+51) FILESEXTRAPATHS_prepend := "${THISDIR}/files:"
+	FILESEXTRAPATHS_append := ":${THISDIR}/files"
+52) 
+INHERIT += "testimage"
+#TEST_IMAGE = "1"
+#TEST_SUITES_forcevariable = "auto"
+TEST_SUITES = " ping ssh ksample"
+
+#IMAGE_INSTALL_append += "dropbear"
+#
+IMAGE_INSTALL_append += "openssh gdb"
+
+53) PREFERRED_VERSION_linux-yocto="4.18%"  制定kernel的哪个版本
+
+53)
+setup后在工程的setup后的目录下：
+	/buildarea/raid0/hsong/tool/wr-repo-tools/faw .
+	source oe...
+cd build:
+	bitbake -k world
+54) SRC_URI = "git:///buildarea/raid0/hsong/proj/glusterfs;protocol=file;branch=release-5"
+	从本地git目录 并切换到分之
+55）rpm 安装
+rpm -Uh --force --nodeps
+rpm -ih --force --nodeps
+
+56) 删除某个任务
+-do_populate_sysroot[noexec] = "1"
++deltask do_populate_sysroot
+
+57:)kernel相关的bbclass
+oe-core/meta/classes/kernel-yocto.bbclass
+
+58）runqemu 在/buildarea/raid0/hsong/proj/18-lts-config/layers/oe-core/scripts/下面
+59) 清除 clean
+	do_cleansstate	//不删tar.gz
+	do_cleanall		//全删
+
+60) ptest
+bb文件中 inherit ptest
+		do_install_ptest{
+			...
+		}
+
+local.conf中：
+DISTRO_FEATURES_append = " ptest"
+CORE_IMAGE_EXTRA_INSTALL += "e2fsprogs-ptest zlib-ptest"  // select specific ptest to rootfs image
+EXTRA_IMAGE_FEATURES += "ptest-pkgs" // add all ptest packages to rootfs image
+PTEST_ENABLE_busybox = "0"
+
+法二：只编译特定的ptest
+	bb中写好代码后： bitbake openvswitch
+	local.conf: IMAGE_INSTALL_append += " openvswitch-ptest"	// 在packages-split下会存在openvswitch-ptest
+	bitbake image-rootfs
+
+61）SOURCE_MIRROR_URL=		//指定源码下载路径 specify source code dl(download)
+
+
+62) bb文件中去掉对某些架构的支持
+# Add pie to GOBUILDMODE to satisfy "textrel" QA checking, but mips
+# doesn't support -buildmode=pie, so skip the QA checking for mips and its
+# variants.
+python() {
+    if 'mips' in d.getVar('TARGET_ARCH'):
+        d.appendVar('INSANE_SKIP_%s' % d.getVar('PN'), " textrel")
+    else:
+        d.setVar('GOBUILDMODE', 'pie')
+}
+
+63）默认toolchain版本 meta/conf/distro/include/tcmode-default.inc
+GCCVERSION ?= "8.%"
+SDKGCCVERSION ?= "${GCCVERSION}"
+BINUVERSION ?= "2.32%"
+GDBVERSION ?= "8.2%"
+GLIBCVERSION ?= "2.29%"
+LINUXLIBCVERSION ?= "5.0%"
+QEMUVERSION ?= "3.1%"                                                                                                                        
+GOVERSION ?= "1.12%"
+
+64) 出现如下错误：
+task does not have a defined signature.
+ERROR: Mismatched signatures or undefined signatures indicate a possibly unsupported configuration. Only tested configurations are supported. Please follow the configuration steps exactly. If you believe this message is in error, please open a support ticket.
+
+SIGGEN_OVERC_DEVEL = "1"
+
+65) 
+	local.conf:
+		TOOLCHAIN_TARGET_TASK_append = " python-dev kernel-dev kernel-devsrc"
+		TOOLCHAIN_HOST_TASK_append = " nativesdk-openssl-dev nativesdk-bison nativesdk-flex"
+	bitbake image 
+	bitbake image -c populate_sdk
+	mkdir mysdk    
+	./tmp-glibc/deploy/sdk/wrlinux-10.19.22.0-glibc-x86_64-qemux86_64-wrlinux-image-glibc-small-sdk.sh
+
+66) LIN8:
+		https://docs.windriver.com/bundle/Wind_River_Linux_Kernel_Command_Line_Tutorials_8.0_1/page/sve1458828740814.html
+
+	LIN8 sdk
+	https://docs.windriver.com/bundle/Wind_River_Linux_Kernel_Command_Line_Tutorials_8.0_1/page/sve1458838704591.html
+	TOOLCHAIN_TARGET_TASK_append = " python-dev kernel-dev"
+	make export-sdk
+	make bbs //进入bitbake 环境
+
+4、mips
+$ setup.sh --machines=qemumips64 --all-layers --accept-eula=yes --user=$USER--password=$PSWD --accept-eula=yes 
+$source environment-setup-x86_64-wrlinuxsdk-linux && source oe-init-build-env build  
+$echo BB_NO_NETWORK = \'0\' >> conf/local.conf 
+$ bitbake -k wrlinux-image-glibc-std
+
+5、cgl
+setup.sh --machine qemux86-64 --distro=wrlinux-cgl --dl-layers 
+2) Make sure these kernel config are enabled: 
+CONFIG_HAVE_ARCH_KGDB=y 
+CONFIG_KGDB=y 
+CONFIG_KGDB_SERIAL_CONSOLE=y 
+CONFIG_KGDB_TESTS=y 
+3) bitbake wrlinux-image-glibc-cgl 
+4) runqemu qemux86-64 nographic slirp bootparams="selinux=0 enforcing=0" 
+
+rpm -qf /bin/ls
+
+
+6）testcase
+To Get The Testing Layer:
+------------------------
+# git clone git://git.wrs.com/git/projects/wassp-repos/testcases/wrlinux
+# cd wrlinux;git checkout master
+
+Project Build:
+----------------------
+    --machines=intel-x86-64 --distro wrlinux --dl-layers
+
+    Add KTS layer 
+    1.bitbake-layers add-layer <path to wr-testing/kts-dev>
+    2.echo 'require templates/feature/wr-kts/template.conf' >> conf/local.conf
+    
